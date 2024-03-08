@@ -8,6 +8,7 @@ import "../src/MyProxy.sol";
 contract NFTMarketplaceTest is Test {
     
     event SellOfferCreated(uint256 offer);
+    event SellOfferAccepted(uint256 offer);
     
     /// load to next string the url that is saved in the file ".env"
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
@@ -16,6 +17,7 @@ contract NFTMarketplaceTest is Test {
     MyProxy public proxy;
 
     address public alice = makeAddr("alice");
+    address public bob = makeAddr("bob");
     /// Bored Ape Yacht Club NFT collection address deployed on Mainnet
     address baycNFT = 0xBC4CA0EdA7647A8aB7C2061c2E118A18a936f13D;
 
@@ -115,6 +117,41 @@ contract NFTMarketplaceTest is Test {
         testCreateSellOffer();
         assertEq(IERC721(baycNFT).balanceOf(address(alice)), 0);
         assertEq(IERC721(baycNFT).balanceOf(address(market)), 1);
+    }
+
+    function testAcceptSellOffer() public {
+        /// alice creates the sell offer with id 0
+        testCreateSellOffer();
+
+        /// ERROR CHECKING
+        /// bob accepts the sell offer with less Ether
+        vm.deal(bob, 50 ether);
+        vm.startPrank(bob);
+        vm.expectRevert(bytes4(keccak256("WrongEthAmount()")));
+        market.acceptSellOffer{value: 18 ether}(0);
+        /// bob accepts it out of deadline
+        vm.warp(uint128(block.timestamp) + 1000000 + 1);
+        vm.expectRevert(bytes4(keccak256("OfferEnded()")));
+        market.acceptSellOffer{value: 20 ether}(0);
+
+        /// bob accepts the offer
+        vm.warp(uint128(block.timestamp) - 1000000 - 1);
+        vm.expectEmit(true, false, false, false);
+        emit SellOfferAccepted(0);
+        market.acceptSellOffer{value: 20 ether}(0);
+        
+        ( , , , , bool isEnded, ) = market.sellOffers(0);
+        assertEq(isEnded, true);
+        assertEq(IERC721(baycNFT).ownerOf(2150), bob);
+        assertEq(alice.balance, 20 ether);
+        vm.stopPrank();
+
+        /// Markus tries to accept the same offer
+        address markus = makeAddr("markus");
+        vm.deal(markus, 50 ether);
+        vm.prank(markus);
+        vm.expectRevert(bytes4(keccak256("OfferEnded()")));
+        market.acceptSellOffer{value: 20 ether}(0);
     }
 
 }

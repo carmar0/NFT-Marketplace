@@ -14,9 +14,13 @@ import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     event SellOfferCreated(uint256 offer);
+    event SellOfferAccepted(uint256 offer);
     error NoOwner();
     error WrongDeadline();
     error WrongPrice();
+    error OfferEnded();
+    error WrongEthAmount();
+    error ErrorEtherTransfer();
 
     uint256 public sellOfferIdCounter;
     uint256 public buyOfferIdCounter;
@@ -58,9 +62,9 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     }
 
     /**
-     * @notice Create an order to sell an NFT by specifying the NFT contract address,
+     * @notice Creates an order to sell an NFT by specifying the NFT contract address,
      * the NFT token ID, the NFT price and the deadline date for the sale.
-     * Emits a SellOfferCreated() event when the sale is opened.
+     * Emits a SellOfferCreated() event when the sale is created.
      * @param _nftAddress NFT collection contract address
      * @param _tokenId NFT Id
      * @param _price NFT price in Ether
@@ -85,6 +89,29 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
             IERC721(_nftAddress).safeTransferFrom(msg.sender, address(this), _tokenId);
 
             emit SellOfferCreated(sellOfferIdCounter - 1);
+    }
+
+    /**
+     * @notice Accepts the NFT sell offer order. The Ether is transferred to the
+     * creator of the offer and the NFT is transferred to the buyer.
+     * Emits a SellOfferAccepted() event when the offer is accepted.
+     * @param sellOfferId Identifier of the sell offer
+     */
+    function acceptSellOffer(uint256 sellOfferId) public payable {
+
+        if (sellOffers[sellOfferId].isEnded) revert OfferEnded();
+        if (block.timestamp > sellOffers[sellOfferId].deadline) revert OfferEnded();
+        if (msg.value != sellOffers[sellOfferId].price) revert WrongEthAmount();
+
+        sellOffers[sellOfferId].isEnded = true;
+
+        IERC721(sellOffers[sellOfferId].nftAddress).safeTransferFrom(
+            address(this), msg.sender, sellOffers[sellOfferId].tokenId);
+
+        (bool ok, ) = (sellOffers[sellOfferId].offerer).call{value: msg.value}("");
+        if (!ok) revert ErrorEtherTransfer();
+
+        emit SellOfferAccepted(sellOfferId);
     }
 
     /**
