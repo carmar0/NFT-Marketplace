@@ -15,6 +15,18 @@ contract MyProxy is ERC1967Proxy {
     address public contractOwner;
     string public marketplaceName;
 
+    mapping(uint256 => Offer) public sellOffers;
+    mapping(uint256 => Offer) public buyOffers;
+
+    struct Offer {
+        uint128 price;
+        uint128 deadline;
+        uint64 tokenId;
+        address nftAddress;
+        bool isEnded;
+        address offerer;
+    }
+
     constructor(address implementation, bytes memory data) 
     ERC1967Proxy(implementation, data) {}
 

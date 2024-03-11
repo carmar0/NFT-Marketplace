@@ -15,12 +15,14 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     event SellOfferCreated(uint256 offer);
     event SellOfferAccepted(uint256 offer);
+    event SellOfferCancelled(uint256 offer);
     error NoOwner();
     error WrongDeadline();
     error WrongPrice();
     error OfferEnded();
     error WrongEthAmount();
     error ErrorEtherTransfer();
+    error OfferNotEnded();
 
     uint256 public sellOfferIdCounter;
     uint256 public buyOfferIdCounter;
@@ -112,6 +114,25 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
         if (!ok) revert ErrorEtherTransfer();
 
         emit SellOfferAccepted(sellOfferId);
+    }
+
+    /**
+     * @notice Cancels the NFT sell offer and returns the NFT to the owner.
+     * Emits a SellOfferCancelled() event when the offer is cancelled
+     * @param sellOfferId Identifier of the sell offer
+     */
+    function cancelSellOffer(uint256 sellOfferId) public {
+        
+        if (sellOffers[sellOfferId].isEnded) revert OfferEnded();
+        if (sellOffers[sellOfferId].offerer != msg.sender) revert NoOwner();
+        if (block.timestamp < sellOffers[sellOfferId].deadline) revert OfferNotEnded();
+
+        sellOffers[sellOfferId].isEnded = true;
+
+        IERC721(sellOffers[sellOfferId].nftAddress).safeTransferFrom(
+            address(this), msg.sender, sellOffers[sellOfferId].tokenId);
+
+        emit SellOfferCancelled(sellOfferId);
     }
 
     /**
