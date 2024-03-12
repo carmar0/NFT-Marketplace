@@ -16,6 +16,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     event SellOfferCreated(uint256 offer);
     event SellOfferAccepted(uint256 offer);
     event SellOfferCancelled(uint256 offer);
+    event BuyOfferCreated(uint256 offer);
     error NoOwner();
     error WrongDeadline();
     error WrongPrice();
@@ -64,7 +65,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     }
 
     /**
-     * @notice Creates an order to sell an NFT by specifying the NFT contract address,
+     * @notice Creates an offer to sell an NFT by specifying the NFT contract address,
      * the NFT token ID, the NFT price and the deadline date for the sale.
      * Emits a SellOfferCreated() event when the sale is created.
      * @param _nftAddress NFT collection contract address
@@ -94,7 +95,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     }
 
     /**
-     * @notice Accepts the NFT sell offer order. The Ether is transferred to the
+     * @notice Accepts the NFT sell offer. The Ether is transferred to the
      * creator of the offer and the NFT is transferred to the buyer.
      * Emits a SellOfferAccepted() event when the offer is accepted.
      * @param sellOfferId Identifier of the sell offer
@@ -133,6 +134,33 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
             address(this), msg.sender, sellOffers[sellOfferId].tokenId);
 
         emit SellOfferCancelled(sellOfferId);
+    }
+
+    /**
+     * @notice Creates an offer to buy a NFT by specifying the NFT contract address,
+     * the NFT token ID and the deadline date for the sale. The Ether is sent to this
+     * contract.
+     * Emits a BuyOfferCreated() event.
+     * @param _nftAddress NFT collection contract address
+     * @param _tokenId NFT Id
+     * @param _deadline Deadline in Wei until the sale is open
+     */
+    function createBuyOffer(
+        address _nftAddress, 
+        uint64 _tokenId, 
+        uint128 _deadline) public payable {
+            
+            if (_deadline <= block.timestamp) revert WrongDeadline();
+            if (msg.value == 0) revert WrongPrice();
+
+            buyOffers[buyOfferIdCounter].nftAddress = _nftAddress;
+            buyOffers[buyOfferIdCounter].tokenId = _tokenId;
+            buyOffers[buyOfferIdCounter].offerer = msg.sender;
+            buyOffers[buyOfferIdCounter].price = uint128(msg.value);
+            buyOffers[buyOfferIdCounter].deadline = _deadline;
+            buyOfferIdCounter++;
+
+            emit BuyOfferCreated(buyOfferIdCounter - 1);
     }
 
     /**

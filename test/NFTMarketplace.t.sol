@@ -10,6 +10,7 @@ contract NFTMarketplaceTest is Test {
     event SellOfferCreated(uint256 offer);
     event SellOfferAccepted(uint256 offer);
     event SellOfferCancelled(uint256 offer);
+    event BuyOfferCreated(uint256 offer);
     
     /// load to next string the url that is saved in the file ".env"
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
@@ -214,6 +215,57 @@ contract NFTMarketplaceTest is Test {
         vm.expectRevert(bytes4(keccak256("OfferEnded()")));
         (bool ok4, ) = address(proxy).call(abi.encodeWithSignature(
             "cancelSellOffer(uint256)", 0));
-        require (ok4, "Call has failed");  
+        require (ok4, "Call has failed");
+        vm.stopPrank(); 
+    }
+
+    function testCreateBuyOffer() public {
+        /////////////////////////// ERROR CHECKING ///////////////////////////
+        /// bob creates a buy offer with wrong deadline
+        vm.deal(bob, 50 ether);
+        vm.startPrank(bob);
+        vm.expectRevert(bytes4(keccak256("WrongDeadline()")));
+        (bool ok, ) = address(proxy).call{value: 10 ether}(
+            abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
+            baycNFT, 2150, uint128(block.timestamp)));
+        require (ok, "Call has failed");
+        /// bob creates a buy offer with wrong price
+        vm.expectRevert(bytes4(keccak256("WrongPrice()")));
+        (bool ok2, ) = address(proxy).call{value: 0}(
+            abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
+            baycNFT, 2150, uint128(block.timestamp) + 10000));
+        require (ok2, "Call has failed");    
+
+        /////////////////////////// BUY OFFER CHECKING ///////////////////////////
+        vm.expectEmit(true, false, false, false);
+        emit BuyOfferCreated(0);
+        (bool ok3, ) = address(proxy).call{value: 22 ether}(
+            abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
+            baycNFT, 2150, uint128(block.timestamp) + 10000));
+        require (ok3, "Call has failed");
+
+        (uint128 price,
+        uint128 deadline,
+        uint64 tokenId,
+        address nftAddress,
+        bool isEnded,
+        address offerer) = proxy.buyOffers(0);
+
+        assertEq(price, 22 ether); 
+        assertEq(deadline, block.timestamp + 10000); 
+        assertEq(tokenId, 2150); 
+        assertEq(nftAddress, baycNFT); 
+        assertEq(isEnded, false);
+        assertEq(offerer, bob); 
+
+        assertEq(proxy.buyOfferIdCounter(), 1);
+        /// bob creates another Offer
+        (bool ok4, ) = address(proxy).call{value: 15 ether}(
+            abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
+            baycNFT, 2000, uint128(block.timestamp) + 10000));
+        require (ok4, "Call has failed");
+
+        assertEq(proxy.buyOfferIdCounter(), 2);
+        vm.stopPrank();
     }
 }
