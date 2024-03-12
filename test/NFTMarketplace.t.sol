@@ -11,6 +11,7 @@ contract NFTMarketplaceTest is Test {
     event SellOfferAccepted(uint256 offer);
     event SellOfferCancelled(uint256 offer);
     event BuyOfferCreated(uint256 offer);
+    event BuyOfferAccepted(uint256 offer);
     
     /// load to next string the url that is saved in the file ".env"
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
@@ -41,6 +42,12 @@ contract NFTMarketplaceTest is Test {
         /// MyProxy.sol deployment
         proxy = new MyProxy(address(market), 
         abi.encodeWithSignature("initialize(string)", "NFT Market"));
+
+        /// The owner of the NFT Token Id 2150 sends his NFT to alice
+        address ownerToken2150 = IERC721(baycNFT).ownerOf(2150);
+        vm.prank(ownerToken2150);
+        IERC721(baycNFT).safeTransferFrom(ownerToken2150, alice, 2150);
+        assertEq(IERC721(baycNFT).ownerOf(2150), alice);
     }
 
     function testInitialize() public {
@@ -75,12 +82,6 @@ contract NFTMarketplaceTest is Test {
             "createSellOffer(address,uint64,uint128,uint128)",
              baycNFT, 2150, 24 ether, uint128(block.timestamp) + 1, ""));
         require (ok, "Call has failed"); 
-
-        /// The owner of the NFT Token Id 2150 sends his NFT to alice
-        address ownerToken2150 = IERC721(baycNFT).ownerOf(2150);
-        vm.prank(ownerToken2150);
-        IERC721(baycNFT).safeTransferFrom(ownerToken2150, alice, 2150);
-        assertEq(IERC721(baycNFT).ownerOf(2150), alice);
         
         // /// alice creates a sell Offer with wrong deadline
         vm.startPrank(alice);
@@ -190,6 +191,7 @@ contract NFTMarketplaceTest is Test {
         (bool ok, ) = address(proxy).call(abi.encodeWithSignature(
             "cancelSellOffer(uint256)", 0));
         require (ok, "Call has failed");
+
         /// alice tries to cancel it when it is not ended
         vm.startPrank(alice);
         vm.expectRevert(bytes4(keccak256("OfferNotEnded()")));
@@ -229,6 +231,7 @@ contract NFTMarketplaceTest is Test {
             abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
             baycNFT, 2150, uint128(block.timestamp)));
         require (ok, "Call has failed");
+
         /// bob creates a buy offer with wrong price
         vm.expectRevert(bytes4(keccak256("WrongPrice()")));
         (bool ok2, ) = address(proxy).call{value: 0}(
@@ -239,7 +242,7 @@ contract NFTMarketplaceTest is Test {
         /////////////////////////// BUY OFFER CHECKING ///////////////////////////
         vm.expectEmit(true, false, false, false);
         emit BuyOfferCreated(0);
-        (bool ok3, ) = address(proxy).call{value: 22 ether}(
+        (bool ok3, ) = address(proxy).call{value: 20 ether}(
             abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
             baycNFT, 2150, uint128(block.timestamp) + 10000));
         require (ok3, "Call has failed");
@@ -251,21 +254,72 @@ contract NFTMarketplaceTest is Test {
         bool isEnded,
         address offerer) = proxy.buyOffers(0);
 
-        assertEq(price, 22 ether); 
+        assertEq(price, 20 ether); 
         assertEq(deadline, block.timestamp + 10000); 
         assertEq(tokenId, 2150); 
         assertEq(nftAddress, baycNFT); 
         assertEq(isEnded, false);
         assertEq(offerer, bob); 
 
+        assertEq(bob.balance, 30 ether);
+        assertEq(address(proxy).balance, 20 ether);
         assertEq(proxy.buyOfferIdCounter(), 1);
+
         /// bob creates another Offer
         (bool ok4, ) = address(proxy).call{value: 15 ether}(
             abi.encodeWithSignature("createBuyOffer(address,uint64,uint128)",
             baycNFT, 2000, uint128(block.timestamp) + 10000));
         require (ok4, "Call has failed");
 
+        assertEq(bob.balance, 15 ether);
+        assertEq(address(proxy).balance, 35 ether);
         assertEq(proxy.buyOfferIdCounter(), 2);
         vm.stopPrank();
+    }
+
+    function testAcceptBuyOffer() public {
+        /// bob creates a buy offer for token 2150 from Bored Ape Yacht Club
+        /// for 20 ether. The NFT belongs to alice
+        testCreateBuyOffer();
+
+        /////////////////////////// ERROR CHECKING ///////////////////////////
+        /// karl tries to accept it
+        vm.prank(karl);
+        vm.expectRevert(bytes4(keccak256("NoOwner()")));
+        (bool ok, ) = address(proxy).call(abi.encodeWithSignature(
+            "acceptBuyOffer(uint256)", 0));
+        require (ok, "Call has failed");
+
+        /// alice tries to accept it with wrong deadline
+        vm.warp(uint128(block.timestamp) + 100000);
+        vm.startPrank(alice);
+        vm.expectRevert(bytes4(keccak256("OfferEnded()")));
+        (bool ok2, ) = address(proxy).call(abi.encodeWithSignature(
+            "acceptBuyOffer(uint256)", 0));
+        require (ok2, "Call has failed");  
+        vm.warp(uint128(block.timestamp) - 100000);
+
+        /////////////////////////// ACCEPT BUY OFFER CHECKING ///////////////////////////
+        /// Alice first approves the proxy to move her NFT
+        IERC721(baycNFT).approve(address(proxy), 2150);
+        vm.expectEmit(true, false, false, false);
+        emit BuyOfferAccepted(0);
+        (bool ok3, ) = address(proxy).call(abi.encodeWithSignature(
+            "acceptBuyOffer(uint256)", 0));
+        require (ok3, "Call has failed");
+
+        ( , , , , bool isEnded, ) = proxy.buyOffers(0);
+        assertEq(isEnded, true);
+        assertEq(IERC721(baycNFT).ownerOf(2150), bob);
+        assertEq(alice.balance, 20 ether);
+        vm.stopPrank();
+
+        /////////////////////////// ERROR CHECKING ///////////////////////////
+        /// bob tries to accept it again
+        vm.prank(bob);
+        vm.expectRevert(bytes4(keccak256("OfferEnded()")));
+        (bool ok4, ) = address(proxy).call(abi.encodeWithSignature(
+            "acceptBuyOffer(uint256)", 0));
+        require (ok4, "Call has failed");  
     }
 }

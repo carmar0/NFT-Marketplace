@@ -17,6 +17,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     event SellOfferAccepted(uint256 offer);
     event SellOfferCancelled(uint256 offer);
     event BuyOfferCreated(uint256 offer);
+    event BuyOfferAccepted(uint256 offer);
     error NoOwner();
     error WrongDeadline();
     error WrongPrice();
@@ -161,6 +162,34 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
             buyOfferIdCounter++;
 
             emit BuyOfferCreated(buyOfferIdCounter - 1);
+    }
+
+/**
+     * @notice Accepts the NFT buy offer. Firstly the user must approve this contract to move
+     * his NFT. The Ether is transferred to the NFT owner and the NFT is transferred to the 
+     * offer creator.
+     * Emits a BuyOfferAccepted() event
+     * @param buyOfferId Identifier of the buy offer
+     */
+    function acceptBuyOffer(uint256 buyOfferId) public {
+
+        if (msg.sender != IERC721(buyOffers[buyOfferId].nftAddress).ownerOf(
+            buyOffers[buyOfferId].tokenId)) revert NoOwner();
+
+        if (buyOffers[buyOfferId].isEnded) revert OfferEnded();
+        if (block.timestamp > buyOffers[buyOfferId].deadline) revert OfferEnded();
+
+        buyOffers[buyOfferId].isEnded = true;
+
+        /// NFT transfer to the buyer
+        IERC721(buyOffers[buyOfferId].nftAddress).safeTransferFrom(
+            msg.sender, buyOffers[buyOfferId].offerer, buyOffers[buyOfferId].tokenId);
+
+        /// Ether transfer to NFT owner
+        (bool ok, ) = (msg.sender).call{value: buyOffers[buyOfferId].price}("");
+        if (!ok) revert ErrorEtherTransfer();
+
+        emit BuyOfferAccepted(buyOfferId);
     }
 
     /**
