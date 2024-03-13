@@ -7,11 +7,12 @@ import "../src/MyProxy.sol";
 
 contract NFTMarketplaceTest is Test {
     
-    event SellOfferCreated(uint256 offer);
-    event SellOfferAccepted(uint256 offer);
-    event SellOfferCancelled(uint256 offer);
-    event BuyOfferCreated(uint256 offer);
-    event BuyOfferAccepted(uint256 offer);
+    event SellOfferCreated(uint256 indexed offer);
+    event SellOfferAccepted(uint256 indexed offer);
+    event SellOfferCancelled(uint256 indexed offer);
+    event BuyOfferCreated(uint256 indexed offer);
+    event BuyOfferAccepted(uint256 indexed offer);
+    event BuyOfferCancelled(uint256 indexed offer);
     
     /// load to next string the url that is saved in the file ".env"
     string MAINNET_RPC_URL = vm.envString("MAINNET_RPC_URL");
@@ -37,11 +38,14 @@ contract NFTMarketplaceTest is Test {
     function setUp() public {
         /// Mainnet fork is created and selected to be used from next line
         vm.createSelectFork(MAINNET_RPC_URL);
+
         /// Marketplace.sol deployment
         market = new NFTMarketplace();
         /// MyProxy.sol deployment
         proxy = new MyProxy(address(market), 
         abi.encodeWithSignature("initialize(string)", "NFT Market"));
+        assertEq(proxy.contractOwner(), address(this));
+        assertEq(proxy.marketplaceName(), "NFT Market");
 
         /// The owner of the NFT Token Id 2150 sends his NFT to alice
         address ownerToken2150 = IERC721(baycNFT).ownerOf(2150);
@@ -51,8 +55,11 @@ contract NFTMarketplaceTest is Test {
     }
 
     function testInitialize() public {
-        assertEq(proxy.contractOwner(), address(this));
-        assertEq(proxy.marketplaceName(), "NFT Market");
+        /// NFTMarketplaceTest.sol tries to initialize NFTMarketplace.sol again
+        vm.expectRevert();
+        (bool ok, ) = address(proxy).call(
+            abi.encodeWithSignature("initialize(string)", "NFT Market"));
+        require (ok, "Call has failed");
     }
 
     function testGetImplementation() public {
@@ -321,5 +328,59 @@ contract NFTMarketplaceTest is Test {
         (bool ok4, ) = address(proxy).call(abi.encodeWithSignature(
             "acceptBuyOffer(uint256)", 0));
         require (ok4, "Call has failed");  
+    }
+
+    function testCancelBuyOffer() public {
+        /// bob cretaes buy offers with id=0 (20 ether) and id=1 (15 ether)
+        testCreateBuyOffer();
+        /// Now bob has 15 ether balance and the proxy 35 ether
+
+        /////////////////////////// ERROR CHECKING ///////////////////////////
+        /// alice tries to cancel buy offer with id=0
+        vm.prank(alice);
+        vm.expectRevert(bytes4(keccak256("NoOwner()")));
+        (bool ok, ) = address(proxy).call(abi.encodeWithSignature(
+            "cancelBuyOffer(uint256)", 0));
+        require (ok, "Call has failed");
+
+        /// bob tries to cancel it when it is not ended
+        vm.startPrank(bob);
+        vm.expectRevert(bytes4(keccak256("OfferNotEnded()")));
+        (bool ok2, ) = address(proxy).call(abi.encodeWithSignature(
+            "cancelBuyOffer(uint256)", 0));
+        require (ok2, "Call has failed");  
+
+        /////////////////////////// CANCELLATION CHECKING ///////////////////////////
+        /// bob cancels the buy offer with id=0
+        vm.warp(uint128(block.timestamp) + 1000000000);
+        vm.expectEmit(true, false, false, false);
+        emit BuyOfferCancelled(0);
+        (bool ok3, ) = address(proxy).call(abi.encodeWithSignature(
+            "cancelBuyOffer(uint256)", 0));
+        require (ok3, "Call has failed");
+
+        ( , , , , bool isEnded, ) = proxy.buyOffers(0);
+        assertEq(isEnded, true);
+        assertEq(bob.balance, 35 ether);
+        assertEq(address(proxy).balance, 15 ether);
+
+        /// bob cancels the buy offer with id=1
+        vm.expectEmit(true, false, false, false);
+        emit BuyOfferCancelled(1);
+        (bool ok4, ) = address(proxy).call(abi.encodeWithSignature(
+            "cancelBuyOffer(uint256)", 1));
+        require (ok4, "Call has failed");
+
+        ( , , , , bool isEnded2, ) = proxy.buyOffers(1);
+        assertEq(isEnded2, true);
+        assertEq(bob.balance, 50 ether);
+        assertEq(address(proxy).balance, 0);
+
+        /////////////////////////// ERROR CHECKING ///////////////////////////
+        /// bob tries to cancel again the buy offer with id=0
+        vm.expectRevert(bytes4(keccak256("OfferEnded()")));
+        (bool ok5, ) = address(proxy).call(abi.encodeWithSignature(
+            "cancelBuyOffer(uint256)", 0));
+        require (ok5, "Call has failed");  
     }
 }

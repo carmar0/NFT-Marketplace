@@ -13,11 +13,12 @@ import "@openzeppelin/contracts/proxy/utils/Initializable.sol";
 
 contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
-    event SellOfferCreated(uint256 offer);
-    event SellOfferAccepted(uint256 offer);
-    event SellOfferCancelled(uint256 offer);
-    event BuyOfferCreated(uint256 offer);
-    event BuyOfferAccepted(uint256 offer);
+    event SellOfferCreated(uint256 indexed offer);
+    event SellOfferAccepted(uint256 indexed offer);
+    event SellOfferCancelled(uint256 indexed offer);
+    event BuyOfferCreated(uint256 indexed offer);
+    event BuyOfferAccepted(uint256 indexed offer);
+    event BuyOfferCancelled(uint256 indexed offer);
     error NoOwner();
     error WrongDeadline();
     error WrongPrice();
@@ -56,7 +57,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     }
 
     /**
-     * @dev Function is invoked by the proxy contract when it is deployed.
+     * @dev This function is invoked by the proxy contract when it is deployed.
      * It sets the contract owner and the NFT marketplace name
      * @param _marketplaceName Name of the NFT marketplace
      */
@@ -68,7 +69,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     /**
      * @notice Creates an offer to sell an NFT by specifying the NFT contract address,
      * the NFT token ID, the NFT price and the deadline date for the sale.
-     * Emits a SellOfferCreated() event when the sale is created.
+     * Emits a SellOfferCreated() event
      * @param _nftAddress NFT collection contract address
      * @param _tokenId NFT Id
      * @param _price NFT price in Ether
@@ -98,7 +99,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     /**
      * @notice Accepts the NFT sell offer. The Ether is transferred to the
      * creator of the offer and the NFT is transferred to the buyer.
-     * Emits a SellOfferAccepted() event when the offer is accepted.
+     * Emits a SellOfferAccepted() event
      * @param sellOfferId Identifier of the sell offer
      */
     function acceptSellOffer(uint256 sellOfferId) public payable {
@@ -109,9 +110,11 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
         sellOffers[sellOfferId].isEnded = true;
 
+        /// NFT transfer to the buyer
         IERC721(sellOffers[sellOfferId].nftAddress).safeTransferFrom(
             address(this), msg.sender, sellOffers[sellOfferId].tokenId);
 
+        /// Ether transfer to the offer creator
         (bool ok, ) = (sellOffers[sellOfferId].offerer).call{value: msg.value}("");
         if (!ok) revert ErrorEtherTransfer();
 
@@ -120,7 +123,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     /**
      * @notice Cancels the NFT sell offer and returns the NFT to the owner.
-     * Emits a SellOfferCancelled() event when the offer is cancelled
+     * Emits a SellOfferCancelled() event
      * @param sellOfferId Identifier of the sell offer
      */
     function cancelSellOffer(uint256 sellOfferId) public {
@@ -141,7 +144,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
      * @notice Creates an offer to buy a NFT by specifying the NFT contract address,
      * the NFT token ID and the deadline date for the sale. The Ether is sent to this
      * contract.
-     * Emits a BuyOfferCreated() event.
+     * Emits a BuyOfferCreated() event
      * @param _nftAddress NFT collection contract address
      * @param _tokenId NFT Id
      * @param _deadline Deadline in Wei until the sale is open
@@ -191,6 +194,27 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
         emit BuyOfferAccepted(buyOfferId);
     }
+
+    /**
+     * @notice Cancels the NFT buy offer and returns the Ether to the offer creator.
+     * Emits a BuyOfferCancelled() event
+     * @param buyOfferId Identifier of the buy offer
+     */
+    function cancelBuyOffer(uint256 buyOfferId) public {
+
+        if (buyOffers[buyOfferId].isEnded) revert OfferEnded();
+        if (buyOffers[buyOfferId].offerer != msg.sender) revert NoOwner();
+        if (block.timestamp < buyOffers[buyOfferId].deadline) revert OfferNotEnded();
+
+        /// cancel the offer
+        buyOffers[buyOfferId].isEnded = true;
+
+        /// return the Ether to the offer creator
+        (bool ok, ) = (msg.sender).call{value: buyOffers[buyOfferId].price}("");
+        if (!ok) revert ErrorEtherTransfer();
+
+        emit BuyOfferCancelled(buyOfferId);
+    }    
 
     /**
      * @dev Function required so that this contract can receive NFT

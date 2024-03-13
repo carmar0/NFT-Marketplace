@@ -31,7 +31,7 @@ contract MyProxy is ERC1967Proxy {
     ERC1967Proxy(implementation, data) {}
 
     /**
-     * @notice Returns the implementation address the proxy is pointing
+     * @notice Returns the implementation/contract address the proxy is pointing
      * @return Implementation address
      */
     function getImplementation() external view returns (address) {
