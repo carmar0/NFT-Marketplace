@@ -142,7 +142,7 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     /**
      * @notice Creates an offer to buy a NFT by specifying the NFT contract address,
-     * the NFT token ID and the deadline date for the sale. The Ether is sent to this
+     * the NFT token ID and the deadline date for the purchase. The Ether is sent to this
      * contract.
      * Emits a BuyOfferCreated() event
      * @param _nftAddress NFT collection contract address
