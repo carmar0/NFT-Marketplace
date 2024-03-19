@@ -46,8 +46,8 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     /**
      * @notice Revert if not called by the NFT owner
-     * @param nftAddress Address of the NFT collection
-     * @param tokenId NFT Id
+     * @param nftAddress NFTs collection contract address
+     * @param tokenId NFT Identifier
      */
     modifier onlyNFTOwner(address nftAddress, uint64 tokenId) {
         if (IERC721(nftAddress).ownerOf(tokenId) != msg.sender) {
@@ -67,13 +67,13 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
     }
 
     /**
-     * @notice Creates an offer to sell an NFT by specifying the NFT contract address,
-     * the NFT token ID, the NFT price and the deadline date for the sale.
+     * @notice Creates a sell offer for a NFT by specifying the NFT contract address,
+     * the NFT token identifier, the NFT price and the deadline date for the sale.
      * Emits a SellOfferCreated() event
-     * @param _nftAddress NFT collection contract address
-     * @param _tokenId NFT Id
-     * @param _price NFT price in Ether
-     * @param _deadline Deadline in Wei until the sale is open
+     * @param _nftAddress NFTs collection contract address
+     * @param _tokenId NFT identifier
+     * @param _price NFT price in Wei
+     * @param _deadline Deadline in Wei until the sale is finished
      */
     function createSellOffer(
         address _nftAddress, 
@@ -84,11 +84,13 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
             if (_deadline <= block.timestamp) revert WrongDeadline();
             if (_price == 0) revert WrongPrice();
 
-            sellOffers[sellOfferIdCounter].nftAddress = _nftAddress;
-            sellOffers[sellOfferIdCounter].tokenId = _tokenId;
-            sellOffers[sellOfferIdCounter].offerer = msg.sender;
-            sellOffers[sellOfferIdCounter].price = _price;
-            sellOffers[sellOfferIdCounter].deadline = _deadline;
+            Offer storage offer = sellOffers[sellOfferIdCounter];
+            offer.nftAddress = _nftAddress;
+            offer.tokenId = _tokenId;
+            offer.offerer = msg.sender;
+            offer.price = _price;
+            offer.deadline = _deadline;
+
             sellOfferIdCounter++;
 
             IERC721(_nftAddress).safeTransferFrom(msg.sender, address(this), _tokenId);
@@ -142,12 +144,12 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
 
     /**
      * @notice Creates an offer to buy a NFT by specifying the NFT contract address,
-     * the NFT token ID and the deadline date for the purchase. The Ether is sent to this
+     * the NFT identifier and the deadline date for the purchase. The Ether is sent to this
      * contract.
      * Emits a BuyOfferCreated() event
      * @param _nftAddress NFT collection contract address
-     * @param _tokenId NFT Id
-     * @param _deadline Deadline in Wei until the sale is open
+     * @param _tokenId NFT identifier
+     * @param _deadline Deadline in Wei until the offer is finished
      */
     function createBuyOffer(
         address _nftAddress, 
@@ -157,11 +159,13 @@ contract NFTMarketplace is UUPSUpgradeable, Initializable {
             if (_deadline <= block.timestamp) revert WrongDeadline();
             if (msg.value == 0) revert WrongPrice();
 
-            buyOffers[buyOfferIdCounter].nftAddress = _nftAddress;
-            buyOffers[buyOfferIdCounter].tokenId = _tokenId;
-            buyOffers[buyOfferIdCounter].offerer = msg.sender;
-            buyOffers[buyOfferIdCounter].price = uint128(msg.value);
-            buyOffers[buyOfferIdCounter].deadline = _deadline;
+            Offer storage offer = buyOffers[buyOfferIdCounter];
+            offer.nftAddress = _nftAddress;
+            offer.tokenId = _tokenId;
+            offer.offerer = msg.sender;
+            offer.price = uint128(msg.value);
+            offer.deadline = _deadline;
+
             buyOfferIdCounter++;
 
             emit BuyOfferCreated(buyOfferIdCounter - 1);
